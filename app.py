@@ -14,21 +14,25 @@ login_manager.login_view = "login"
 
 class Usuario(UserMixin):
     def __init__(self, id, email):
-        self.id = id
+        # OBLIGATORIO: El ID siempre debe guardarse como texto (str) para Flask-Login
+        self.id = str(id)
         self.email = email
 
 @login_manager.user_loader
 def load_user(user_id):
-    conexion = obtener_conexion()
-    cursor = conexion.cursor()
-    cursor.execute("SELECT id, email FROM usuarios WHERE id = %s", (int(user_id),))
-    usuario = cursor.fetchone()
-    cursor.close()
-    conexion.close()
-    
-    if usuario:
-        # Extraemos posición 0 (id) y posición 1 (email)
-        return Usuario(usuario[0], usuario[1])
+    try:
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        cursor.execute("SELECT id, email FROM usuarios WHERE id = %s", (int(user_id),))
+        usuario = cursor.fetchone()
+        cursor.close()
+        conexion.close()
+        
+        if usuario:
+            # Extraemos posicion 0 (id) y posicion 1 (email)
+            return Usuario(usuario[0], usuario[1])
+    except Exception as e:
+        print(f"Error en load_user: {e}")
     return None
 
 def obtener_conexion():
@@ -85,6 +89,9 @@ def registro():
         except psycopg2.errors.UniqueViolation:
             conexion.rollback()
             flash("Ese correo electrónico ya está registrado.", "error")
+        except Exception as e:
+            print(f"Error en registro: {e}")
+            flash("Ocurrió un error inesperado.", "error")
         finally:
             cursor.close()
             conexion.close()
@@ -105,8 +112,8 @@ def login():
         cursor.close()
         conexion.close()
         
-        # usuario[2] es la contraseña encriptada, usuario[0] es el id, usuario[1] es el email
         if usuario and bcrypt.checkpw(password.encode('utf-8'), usuario[2].encode('utf-8')):
+            # Pasamos usuario[0] (id) y usuario[1] (email) de forma correcta
             usuario_obj = Usuario(usuario[0], usuario[1])
             login_user(usuario_obj)
             return redirect(url_for("inicio"))
@@ -133,20 +140,21 @@ def inicio():
     conexion = obtener_conexion()
     cursor = conexion.cursor()
     
+    # Filtramos usando int(current_user.id) para la base de datos
     if categoria_filtrada == "Todas":
-        cursor.execute("SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos WHERE usuario_id = %s ORDER BY id DESC", (current_user.id,))
+        cursor.execute("SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos WHERE usuario_id = %s ORDER BY id DESC", (int(current_user.id),))
     else:
         cursor.execute(
             "SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos WHERE usuario_id = %s AND categoria = %s ORDER BY id DESC",
-            (current_user.id, categoria_filtrada)
+            (int(current_user.id), categoria_filtrada)
         )
     lista_movimientos = cursor.fetchall()
     
-    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Ingreso'", (current_user.id,))
+    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Ingreso'", (int(current_user.id),))
     res_ingresos = cursor.fetchone()
     total_ingresos = float(res_ingresos[0]) if res_ingresos and res_ingresos[0] is not None else 0.0
     
-    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Egreso'", (current_user.id,))
+    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Egreso'", (int(current_user.id),))
     res_egresos = cursor.fetchone()
     total_egresos = float(res_egresos[0]) if res_egresos and res_egresos[0] is not None else 0.0
     
@@ -184,7 +192,7 @@ def guardar_movimiento():
     cursor = conexion.cursor()
     cursor.execute(
         "INSERT INTO movimientos (usuario_id, detalle, monto, tipo, categoria, fecha) VALUES (%s, %s, %s, %s, %s, %s)",
-        (current_user.id, detalle, monto, tipo, categoria, fecha)
+        (int(current_user.id), detalle, monto, tipo, categoria, fecha)
     )
     conexion.commit()
     cursor.close()
@@ -198,7 +206,7 @@ def guardar_movimiento():
 def eliminar_movimiento(movimiento_id):
     conexion = obtener_conexion()
     cursor = conexion.cursor()
-    cursor.execute("DELETE FROM movimientos WHERE id = %s AND usuario_id = %s", (movimiento_id, current_user.id))
+    cursor.execute("DELETE FROM movimientos WHERE id = %s AND usuario_id = %s", (movimiento_id, int(current_user.id)))
     conexion.commit()
     cursor.close()
     conexion.close()
