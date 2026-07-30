@@ -1,19 +1,59 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+import bcrypt
 import psycopg2
 import os
 
 app = Flask(__name__)
+# Necesitamos una clave secreta para proteger las sesiones de los usuarios
+app.secret_key = os.environ.get("SECRET_KEY", "mi_clave_secreta_super_segura")
+
+# --- CONFIGURACIÓN DEL SISTEMA DE LOGINS ---
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login" # Si alguien quiere entrar sin permiso, lo manda a loguearse
+
+# Clase Usuario para que Flask-Login maneje la sesión
+class Usuario(UserMixin):
+    def __init__(self, id, email):
+        self.id = id
+        self.email = email
+
+@login_manager.user_loader
+def load_user(user_id):
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+    cursor.execute("SELECT id, email FROM usuarios WHERE id = %s", (int(user_id),))
+    usuario = cursor.fetchone()
+    cursor.close()
+    conexion.close()
+    if usuario:
+        return Usuario(usuario[0], usuario[1])
+    return None
 
 def obtener_conexion():
     url_base_datos = os.environ.get("DATABASE_URL", "postgresql://usuario:clave@localhost:5432/finanzas")
     return psycopg2.connect(url_base_datos)
 
+# --- CREACIÓN DE TABLAS EN LA BASE DE DATOS ---
 def iniciar_base_datos():
     conexion = obtener_conexion()
     cursor = conexion.cursor()
+    
+    # Tabla 1: Usuarios
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id SERIAL PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    """)
+    
+    # Tabla 2: Movimientos (Ahora incluye 'usuario_id' para saber de quién es el gasto)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimientos (
             id SERIAL PRIMARY KEY,
+            usuario_id INTEGER NOT NULL,
             detalle VARCHAR(255) NOT NULL,
             monto NUMERIC(10, 2) NOT NULL,
             tipo VARCHAR(50) NOT NULL,
@@ -27,32 +67,89 @@ def iniciar_base_datos():
 
 iniciar_base_datos()
 
+# --- RUTAS DE AUTENTICACIÓN (LOGIN Y REGISTRO) ---
 
+@app.route("/registro", methods=["GET", "POST"])
+def registro():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+        
+        # Encriptamos la contraseña por seguridad
+        password_encriptada = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        try:
+            cursor.execute("INSERT INTO usuarios (email, password) VALUES (%s, %s)", (email, password_encriptada))
+            conexion.commit()
+            flash("¡Registro exitoso! Ya podés iniciar sesión.", "success")
+            return redirect(url_for("login"))
+        except psycopg2.errors.UniqueViolation:
+            conexion.rollback()
+            flash("Error: Ese correo electrónico ya está registrado.", "error")
+        finally:
+            cursor.close()
+            conexion.close()
+            
+    return render_template("registro.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+        
+        conexion = obtener_conexion()
+        cursor = conexion.cursor()
+        cursor.execute("SELECT id, email, password FROM usuarios WHERE email = %s", (email,))
+        usuario = cursor.fetchone()
+        cursor.close()
+        conexion.close()
+        
+        # Verificamos si el usuario existe y si la contraseña coincide
+        if usuario and bcrypt.checkpw(password.encode('utf-8'), usuario[2].encode('utf-8')):
+            usuario_obj = Usuario(usuario[0], usuario[1])
+            login_user(usuario_obj) # Iniciamos la sesión en el navegador
+            return redirect(url_for("inicio"))
+        else:
+            flash("Correo o contraseña incorrectos.", "error")
+            
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user() # Cerramos la sesión
+    return redirect(url_for("login"))
+
+
+# --- RUTA PRINCIPAL (PROTEGIDA) ---
 @app.route("/")
+@login_required # Obliga a estar logueado para ver esta pantalla
 def inicio():
     categoria_filtrada = request.args.get("categoria_filtro", "Todas")
     
     conexion = obtener_conexion()
     cursor = conexion.cursor()
     
-    # 1. Traemos los movimientos filtrados o completos
+    # 1. Traemos los movimientos FILTRADOS por categoría Y SOLO del usuario actual (current_user.id)
     if categoria_filtrada == "Todas":
-        cursor.execute("SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos ORDER BY id DESC")
+        cursor.execute("SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos WHERE usuario_id = %s ORDER BY id DESC", (current_user.id,))
     else:
         cursor.execute(
-            "SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos WHERE categoria = %s ORDER BY id DESC",
-            (categoria_filtrada,)
+            "SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos WHERE usuario_id = %s AND categoria = %s ORDER BY id DESC",
+            (current_user.id, categoria_filtrada)
         )
     lista_movimientos = cursor.fetchall()
     
-    # 2. Calculamos ingresos de forma segura
-    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Ingreso'")
+    # 2. Calculamos ingresos SOLO del usuario actual
+    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Ingreso'", (current_user.id,))
     res_ingresos = cursor.fetchone()
-    # Si la base de datos devuelve None o una tupla con None, ponemos 0.0
     total_ingresos = float(res_ingresos[0]) if res_ingresos and res_ingresos[0] is not None else 0.0
     
-    # 3. Calculamos egresos de forma segura
-    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Egreso'")
+    # 3. Calculamos egresos SOLO del usuario actual
+    cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Egreso'", (current_user.id,))
     res_egresos = cursor.fetchone()
     total_egresos = float(res_egresos[0]) if res_egresos and res_egresos[0] is not None else 0.0
     
@@ -67,11 +164,13 @@ def inicio():
         ingresos=total_ingresos, 
         egresos=total_egresos, 
         saldo=saldo_neto,
-        categoria_seleccionada=categoria_filtrada
+        categoria_seleccionada=categoria_filtrada,
+        email_usuario=current_user.email
     )
 
 
 @app.route("/guardar", methods=["POST"])
+@login_required
 def guardar_movimiento():
     detalle = request.form.get("detalle")
     monto_form = request.form.get("monto")
@@ -86,9 +185,10 @@ def guardar_movimiento():
 
     conexion = obtener_conexion()
     cursor = conexion.cursor()
+    # Guardamos incluyendo el 'current_user.id' para saber quién lo cargó
     cursor.execute(
-        "INSERT INTO movimientos (detalle, monto, tipo, categoria, fecha) VALUES (%s, %s, %s, %s, %s)",
-        (detalle, monto, tipo, categoria, fecha)
+        "INSERT INTO movimientos (usuario_id, detalle, monto, tipo, categoria, fecha) VALUES (%s, %s, %s, %s, %s, %s)",
+        (current_user.id, detalle, monto, tipo, categoria, fecha)
     )
     conexion.commit()
     cursor.close()
@@ -98,10 +198,12 @@ def guardar_movimiento():
 
 
 @app.route("/eliminar/<int:movimiento_id>")
+@login_required
 def eliminar_movimiento(movimiento_id):
     conexion = obtener_conexion()
     cursor = conexion.cursor()
-    cursor.execute("DELETE FROM movimientos WHERE id = %s", (movimiento_id,))
+    # Aseguramos que solo pueda borrarlo si el movimiento le pertenece
+    cursor.execute("DELETE FROM movimientos WHERE id = %s AND usuario_id = %s", (movimiento_id, current_user.id))
     conexion.commit()
     cursor.close()
     conexion.close()
