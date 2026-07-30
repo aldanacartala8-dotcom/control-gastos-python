@@ -5,7 +5,6 @@ import psycopg2
 import os
 
 app = Flask(__name__)
-# Clave secreta para encriptar de forma segura las sesiones de usuario
 app.secret_key = os.environ.get("SECRET_KEY", "clave_secreta_por_defecto_123")
 
 # --- CONFIGURACIÓN DE LOGIN MANAGER ---
@@ -13,7 +12,6 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# Modelo de Usuario para Flask-Login
 class Usuario(UserMixin):
     def __init__(self, id, email):
         self.id = id
@@ -28,8 +26,8 @@ def load_user(user_id):
     cursor.close()
     conexion.close()
     
-    # Extraemos la posición 0 (id) y la posición 1 (email) de la tupla de PostgreSQL
     if usuario:
+        # Extraemos posición 0 (id) y posición 1 (email)
         return Usuario(usuario[0], usuario[1])
     return None
 
@@ -41,7 +39,6 @@ def iniciar_base_datos():
     conexion = obtener_conexion()
     cursor = conexion.cursor()
     
-    # Tabla de usuarios
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id SERIAL PRIMARY KEY,
@@ -50,7 +47,6 @@ def iniciar_base_datos():
         )
     """)
     
-    # Tabla de movimientos vinculada por usuario_id
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimientos (
             id SERIAL PRIMARY KEY,
@@ -69,7 +65,7 @@ def iniciar_base_datos():
 iniciar_base_datos()
 
 
-# --- RUTAS DE ACCESO Y AUTENTICACIÓN ---
+# --- RUTAS DE AUTENTICACIÓN ---
 
 @app.route("/registro", methods=["GET", "POST"])
 def registro():
@@ -77,7 +73,6 @@ def registro():
         email = request.form.get("email")
         password = request.form.get("password")
         
-        # Encriptamos la clave antes de guardarla en internet
         password_encriptada = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         
         conexion = obtener_conexion()
@@ -120,6 +115,7 @@ def login():
             
     return render_template("login.html")
 
+
 @app.route("/logout")
 @login_required
 def logout():
@@ -127,17 +123,16 @@ def logout():
     return redirect(url_for("login"))
 
 
-# --- RUTA PRINCIPAL (FINANZAS FILTRADAS POR USUARIO) ---
+# --- RUTA PRINCIPAL ---
 
 @app.route("/")
 @login_required
 def inicio():
-    categoria_filtrada = request.args.get("categoria_filter", "Todas")
+    categoria_filtrada = request.args.get("categoria_filtro", "Todas")
     
     conexion = obtener_conexion()
     cursor = conexion.cursor()
     
-    # 1. Traemos los movimientos pertenecientes estrictamente al usuario logueado
     if categoria_filtrada == "Todas":
         cursor.execute("SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos WHERE usuario_id = %s ORDER BY id DESC", (current_user.id,))
     else:
@@ -147,12 +142,10 @@ def inicio():
         )
     lista_movimientos = cursor.fetchall()
     
-    # 2. Calculamos total de ingresos del usuario actual
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Ingreso'", (current_user.id,))
     res_ingresos = cursor.fetchone()
     total_ingresos = float(res_ingresos[0]) if res_ingresos and res_ingresos[0] is not None else 0.0
     
-    # 3. Calculamos total de egresos del usuario actual
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE usuario_id = %s AND tipo = 'Egreso'", (current_user.id,))
     res_egresos = cursor.fetchone()
     total_egresos = float(res_egresos[0]) if res_egresos and res_egresos[0] is not None else 0.0
@@ -205,7 +198,6 @@ def guardar_movimiento():
 def eliminar_movimiento(movimiento_id):
     conexion = obtener_conexion()
     cursor = conexion.cursor()
-    # Doble validación: borra el gasto solo si coincide el ID y pertenece al usuario activo
     cursor.execute("DELETE FROM movimientos WHERE id = %s AND usuario_id = %s", (movimiento_id, current_user.id))
     conexion.commit()
     cursor.close()
