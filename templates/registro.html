@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrarse - Control de Gastos</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f3f4f6; display: flex; height: 100vh; justify-content: center; align-items: center; margin: 0; }
+        .caja-registro { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 380px; text-align: center; }
+        h2 { color: #111827; margin-bottom: 8px; }
+        p { color: #6b7280; font-size: 14px; margin-bottom: 25px; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; outline: none; }
+        input:focus { border-color: #10b981; }
+        button { width: 100%; padding: 12px; background-color: #10b981; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 15px; }
+        button:hover { background-color: #059669; }
+        .enlace { margin-top: 20px; font-size: 14px; color: #4b5563; }
+        .enlace a { color: #10b981; text-decoration: none; font-weight: bold; }
+        .alerta { background-color: #fee2e2; color: #ef4444; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="caja-registro">
+    <h2>📝 Crear Cuenta</h2>
+    <p>Registrate para empezar tu propio historial.</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alerta">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form action="/registro" method="POST">
+        <input type="email" name="email" placeholder="Correo Electrónico" required>
+        <input type="password" name="password" placeholder="Creá una Contraseña" required>
+        <button type="submit">Crear Cuenta</button>
+    </form>
+
+    <div class="enlace">
+        ¿Ya tenés cuenta? <a href="/login">Iniciá sesión acá</a>
+    </div>
+</div>
+
+</body>
+</html>
