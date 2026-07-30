@@ -28,10 +28,9 @@ def iniciar_base_datos():
 iniciar_base_datos()
 
 
-# --- RUTA PRINCIPAL CON FILTRO ---
+# --- RUTA PRINCIPAL CON FILTRO  ---
 @app.route("/")
 def inicio():
-    # Capturamos si el usuario eligió filtrar por alguna categoría específica
     categoria_filtrada = request.args.get("categoria_filtro", "Todas")
     
     conexion = obtener_conexion()
@@ -47,14 +46,15 @@ def inicio():
         )
     lista_movimientos = cursor.fetchall()
     
-    # 2. Calculamos los totales matemáticos SIEMPRE sobre el total general (sin importar el filtro)
+    # 2. Calculamos el total de INGRESOS (Agregamos [0] para sacar el número de la tupla)
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Ingreso'")
-    res_ingresos = cursor.fetchone()[0]
-    total_ingresos = float(res_ingresos) if res_ingresos else 0.0
+    res_ingresos = cursor.fetchone()
+    total_ingresos = float(res_ingresos[0]) if res_ingresos and res_ingresos[0] is not None else 0.0
     
+    # 3. Calculamos el total de EGRESOS (Agregamos [0] para sacar el número de la tupla)
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Egreso'")
-    res_egresos = cursor.fetchone()[0]
-    total_egresos = float(res_egresos) if res_egresos else 0.0
+    res_egresos = cursor.fetchone()
+    total_egresos = float(res_egresos[0]) if res_egresos and res_egresos[0] is not None else 0.0
     
     cursor.close()
     conexion.close()
@@ -67,9 +67,8 @@ def inicio():
         ingresos=total_ingresos, 
         egresos=total_egresos, 
         saldo=saldo_neto,
-        categoria_seleccionada=categoria_filtrada # Le avisamos al HTML cuál filtro está activo
+        categoria_seleccionada=categoria_filtrada
     )
-
 
 # --- REGISTRAR MOVIMIENTO ---
 @app.route("/guardar", methods=["POST"])
