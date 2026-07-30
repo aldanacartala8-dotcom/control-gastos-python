@@ -28,7 +28,6 @@ def iniciar_base_datos():
 iniciar_base_datos()
 
 
-# --- RUTA PRINCIPAL CON FILTRO  ---
 @app.route("/")
 def inicio():
     categoria_filtrada = request.args.get("categoria_filtro", "Todas")
@@ -36,7 +35,7 @@ def inicio():
     conexion = obtener_conexion()
     cursor = conexion.cursor()
     
-    # 1. Traemos la lista de movimientos (Filtrada o Completa)
+    # 1. Traemos los movimientos filtrados o completos
     if categoria_filtrada == "Todas":
         cursor.execute("SELECT id, detalle, monto, tipo, categoria, fecha FROM movimientos ORDER BY id DESC")
     else:
@@ -46,12 +45,12 @@ def inicio():
         )
     lista_movimientos = cursor.fetchall()
     
-    # 2. Calculamos el total de INGRESOS (Agregamos [0] para sacar el número de la tupla)
+    # 2. Calculamos ingresos
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Ingreso'")
     res_ingresos = cursor.fetchone()
     total_ingresos = float(res_ingresos[0]) if res_ingresos and res_ingresos[0] is not None else 0.0
     
-    # 3. Calculamos el total de EGRESOS (Agregamos [0] para sacar el número de la tupla)
+    # 3. Calculamos egresos
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Egreso'")
     res_egresos = cursor.fetchone()
     total_egresos = float(res_egresos[0]) if res_egresos and res_egresos[0] is not None else 0.0
@@ -70,17 +69,18 @@ def inicio():
         categoria_seleccionada=categoria_filtrada
     )
 
-# --- REGISTRAR MOVIMIENTO ---
+
 @app.route("/guardar", methods=["POST"])
 def guardar_movimiento():
     detalle = request.form.get("detalle")
+    monto_form = request.form.get("monto")
     tipo = request.form.get("tipo")
     categoria = request.form.get("categoria")
     fecha = request.form.get("fecha")
     
     try:
-        monto = float(request.form.get("monto"))
-    except ValueError:
+        monto = float(monto_form)
+    except (ValueError, TypeError):
         return redirect(url_for("inicio"))
 
     conexion = obtener_conexion()
@@ -96,12 +96,10 @@ def guardar_movimiento():
     return redirect(url_for("inicio"))
 
 
-# --- NUEVA RUTA: ELIMINAR UN MOVIMIENTO ---
 @app.route("/eliminar/<int:movimiento_id>")
 def eliminar_movimiento(movimiento_id):
     conexion = obtener_conexion()
     cursor = conexion.cursor()
-    # Usamos la sentencia SQL DELETE para borrar la fila exacta por su ID único
     cursor.execute("DELETE FROM movimientos WHERE id = %s", (movimiento_id,))
     conexion.commit()
     cursor.close()
