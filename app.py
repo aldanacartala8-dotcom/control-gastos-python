@@ -28,7 +28,7 @@ def load_user(user_id):
     cursor.close()
     conexion.close()
     
-    # Extraemos el ID y el Email por separado de la tupla devuelta por SQL
+    # Extraemos la posición 0 (id) y la posición 1 (email) de la tupla de PostgreSQL
     if usuario:
         return Usuario(usuario[0], usuario[1])
     return None
@@ -110,7 +110,7 @@ def login():
         cursor.close()
         conexion.close()
         
-        # Comparamos la clave ingresada con el hash encriptado de la base de datos
+        # usuario[2] es la contraseña encriptada, usuario[0] es el id, usuario[1] es el email
         if usuario and bcrypt.checkpw(password.encode('utf-8'), usuario[2].encode('utf-8')):
             usuario_obj = Usuario(usuario[0], usuario[1])
             login_user(usuario_obj)
@@ -119,7 +119,6 @@ def login():
             flash("Correo electrónico o contraseña incorrectos.", "error")
             
     return render_template("login.html")
-
 
 @app.route("/logout")
 @login_required
