@@ -54,7 +54,6 @@ def iniciar_base_datos():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movimientos (
             id SERIAL PRIMARY KEY,
-            usuario_id INTEGER NOT NULL,
             detalle VARCHAR(255) NOT NULL,
             monto NUMERIC(10, 2) NOT NULL,
             tipo VARCHAR(50) NOT NULL,
@@ -62,9 +61,16 @@ def iniciar_base_datos():
             fecha VARCHAR(50) NOT NULL
         )
     """)
+    
+    try:
+        cursor.execute("ALTER TABLE movimientos ADD COLUMN usuario_id INTEGER DEFAULT 1;")
+    except Exception:
+        conexion.rollback() # Si ya existía de alguna prueba, ignora el error y no pasa nada
+        
     conexion.commit()
     cursor.close()
     conexion.close()
+
 
 iniciar_base_datos()
 
