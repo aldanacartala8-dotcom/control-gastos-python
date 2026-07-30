@@ -45,12 +45,13 @@ def inicio():
         )
     lista_movimientos = cursor.fetchall()
     
-    # 2. Calculamos ingresos
+    # 2. Calculamos ingresos de forma segura
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Ingreso'")
     res_ingresos = cursor.fetchone()
+    # Si la base de datos devuelve None o una tupla con None, ponemos 0.0
     total_ingresos = float(res_ingresos[0]) if res_ingresos and res_ingresos[0] is not None else 0.0
     
-    # 3. Calculamos egresos
+    # 3. Calculamos egresos de forma segura
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo = 'Egreso'")
     res_egresos = cursor.fetchone()
     total_egresos = float(res_egresos[0]) if res_egresos and res_egresos[0] is not None else 0.0
